@@ -25,6 +25,15 @@ const nextConfig = {
       },
     ];
   },
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'media.tepapa.govt.nz',
+        port: '',
+      },
+    ],
+  },
 };
 
 module.exports = nextConfig;
