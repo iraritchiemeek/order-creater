@@ -1,97 +1,39 @@
 from fastapi import FastAPI, Request, HTTPException
 from openai import OpenAI
 import json
-import httpx
-import os
-from dotenv import load_dotenv
-from pydantic import BaseModel, Field
+from api.types import DateFilter, RunConversationResponse
 from typing import Optional, List, Dict
+from api.te_papa_api import search_te_papa
 
 app = FastAPI()
 client = OpenAI()
 
-load_dotenv()
-TE_PAPA_API_KEY = os.environ.get("TE_PAPA_API_KEY")
-if not TE_PAPA_API_KEY:
-    raise ValueError("TE_PAPA_API_KEY environment variable is not set")
-TE_PAPA_API_URL = "https://data.tepapa.govt.nz/collection/search"
-
-class DateFilter(BaseModel):
-    facetCreatedDate_century: Optional[str] = Field(None, alias="facetCreatedDate.century")
-    facetCreatedDate_decadeOfCentury: Optional[str] = Field(None, alias="facetCreatedDate.decadeOfCentury")
-    facetCreatedDate_year: Optional[str] = Field(None, alias="facetCreatedDate.year")
-
-class SearchTePapaRequest(BaseModel):
-    query: str
-    date_filter: Optional[DateFilter] = None
-
-class SearchTePapaResponse(BaseModel):
-    results: List[Dict] = []
-    query_url: str
-
-class RunConversationRequest(BaseModel):
-    user_message: str
-
-class RunConversationResponse(BaseModel):
-    response: str
-    results: List[Dict] = []
-    query_url: Optional[str] = None
-
-async def search_te_papa(query: str, date_filter: Optional[DateFilter] = None) -> SearchTePapaResponse:
-    headers = {
-        'Content-Type': 'application/json',
-        'x-api-key': TE_PAPA_API_KEY
-    }
-    filters = []
-    body = {
-        "query": f"{query} AND collection:Photography AND _exists_:hasRepresentation",
-        "defaultOperator": "AND",
-        "size": 18,
-        "filters": filters
-    }
-    if date_filter:
-        for field, value in date_filter.dict(by_alias=True, exclude_unset=True).items():
-            filters.append({
-                "field": f"production.{field}",
-                "keyword": value
-            })
-        body["filters"] = filters
-
-    async with httpx.AsyncClient() as client:
-        print('Querying Te Papa API...')
-        print(body)
-        response = await client.post(TE_PAPA_API_URL, headers=headers, json=body)
-        if response.status_code == 200:
-            print(response)
-            print('///////')
-            return SearchTePapaResponse(results=response.json().get("results", []), query_url=body)
-        else:
-            print('Failed to fetch data from Te Papa API:', response.status_code, response.text)
-            return SearchTePapaResponse(results=[], query_url=body)
+# In-memory storage for conversation history
+conversation_history: List[Dict[str, str]] = []
 
 async def run_conversation(user_message: str) -> RunConversationResponse:
     if not user_message:
         raise HTTPException(status_code=400, detail="Message parameter is required")
 
-    # Extract date_filter from user_message if applicable
-    date_filter = None  # Set to None or extract from user_message if needed
+    # Add the new user message to the history
+    conversation_history.append({"role": "user", "content": user_message})
 
     messages = [
-        {"role": "system", "content": "You are a helpful assistant for searching the Te Papa collections."},
-        {"role": "user", "content": user_message}
-    ]
+        {"role": "system", "content": "You are a helpful assistant that is an expert at querying museums archive APIs. Always include all relevant context provided by the user in your queries. If the query seems too broad, prompt the user for additional context that could be provided to return better results before making any function calls. Ensure that location-specific information, such as 'Wellington', is included in the search query if mentioned by the user. Make sure the search query is descriptive enough to provide relevant results."},
+    ] + conversation_history
+
     tools = [
         {
             "type": "function",
             "function": {
                 "name": "search_te_papa",
-                "description": "Search the Te Papa collections API. The function accepts a search query and an optional date filter. The date filter can be one of the following: 'century', 'decadeOfCentury', or 'year'. For example, '19th century', '1870s', or '1877'.",
+                "description": "Search the Te Papa collections API. The function accepts a search query and an optional date filter. The date filter can be one of the following: 'century', 'decadeOfCentury', or 'year'. For example, '19th century', '1870s', or '1877'. Ensure the search query is descriptive and includes any location-specific information provided by the user.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "query": {
                             "type": "string",
-                            "description": "The search query"
+                            "description": "A descriptive text search query that includes all relevant context and location-specific information"
                         },
                         "date_filter": {
                             "type": "object",
@@ -133,7 +75,6 @@ async def run_conversation(user_message: str) -> RunConversationResponse:
             function_name = tool_call.function.name
             function_to_call = available_functions[function_name]
             print(tool_call.function.arguments)
-            print('/////////')
             function_args = json.loads(tool_call.function.arguments)
             print(function_args)
             # Convert date_filter back to DateFilter object if it exists
@@ -142,15 +83,17 @@ async def run_conversation(user_message: str) -> RunConversationResponse:
             
             function_response = await function_to_call(**function_args)
             results = function_response.results
+
+            # Add the assistant's response to the history
+            conversation_history.append({"role": "assistant", "content": response_message.content})
+
             return RunConversationResponse(
-                response=response_message.content or "No response content",
+                response=response_message.content or json.dumps(function_args, default=lambda o: o.dict() if isinstance(o, DateFilter) else o),
                 results=results,
-                query_url=function_args
             )
     return RunConversationResponse(
         response=response_message.content or "No response content",
-        results=[],
-        query_url=None
+        results=[]
     )
 
 @app.get("/api/chat")

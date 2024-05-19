@@ -1,9 +1,12 @@
 'use client'
 
-import { useState } from 'react';
+import { Dispatch, SetStateAction, useState } from 'react';
 import { Textarea } from "./catalyst/textarea";
 import { Button } from './catalyst/button';
 import { Dialog, DialogTitle, DialogDescription, DialogBody, DialogActions } from './catalyst/dialog';
+import { Result } from './results';
+import { Field as HeadlessField } from '@headlessui/react'
+import { Input } from '@/app/_components/catalyst/input'
 
 interface Message {
   text: string;
@@ -11,13 +14,11 @@ interface Message {
 }
 
 interface ChatBotProps {
-  setResults: (results: any[]) => void;
+  setResults: Dispatch<SetStateAction<Result[]>>;
 }
 
 export const ChatBot = ({ setResults }: ChatBotProps) => {
-  const [messages, setMessages] = useState<Message[]>([
-    { text: "Hi, how can I help you today?", sender: 'bot' }
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState<string>('');
   const [order, setOrder] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
@@ -36,41 +37,34 @@ export const ChatBot = ({ setResults }: ChatBotProps) => {
       setOrder(data.order);
       setIsModalOpen(true);
     }
-    setResults(data.results);  // Pass results to parent
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage(e);
-    }
+    setResults(data.results);
   };
 
   const ChatBubble = ({ msg, index }: { msg: Message, index: number }) => (
     <div
       key={index}
-      className={`p-2 rounded-lg px-4 ${msg.sender === 'user' ? 'bg-blue-100' : 'bg-slate-100'}`}
+      className="flex"
     >
-      {msg.text}
+      <span className={`py-2 rounded-lg px-4 mb-2 ${msg.sender === 'user' ? 'bg-blue-100' : 'bg-slate-100'}`}>{msg.text}</span>
     </div>
   );
 
   return (
     <div className='w-full rounded-lg border border-slate-200 p-4'>
-      <div className='space-y-2 mb-8 flex flex-col'>
+      <div className='space-y-2 flex flex-col'>
         {messages.map((msg, index) => <ChatBubble key={index} msg={msg} index={index} />)}
       </div>
-      <form onSubmit={sendMessage} className='space-y-2 flex flex-col items-end'>
-        <Textarea
-          className="h-16"
-          resizable={false}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-        />
-        <Button type="submit" className="cursor-pointer">
-          Send
-        </Button>
+      <form onSubmit={sendMessage}>
+        <HeadlessField className="w-full flex gap-2">
+          <Input
+            value={input}
+            placeholder=""
+            onChange={(e) => setInput(e.target.value)}
+          />
+          <Button type="submit" className="cursor-pointer">
+            Send
+          </Button>
+        </HeadlessField>
       </form>
       <Dialog open={isModalOpen} onClose={() => setIsModalOpen(false)}>
         <DialogTitle>Order Details</DialogTitle>

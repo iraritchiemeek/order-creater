@@ -1,8 +1,10 @@
 import Image from 'next/image';
+import { Button } from './catalyst/button';
 
-interface Result {
+export interface Result {
     id: number;
-    hasRepresentation: { previewUrl: string, title: string }[];
+    hasRepresentation: { previewUrl: string, contentUrl: string }[];
+    title: string;
 }
 
 interface ResultsProps {
@@ -10,24 +12,23 @@ interface ResultsProps {
 }
 
 export const Results = ({ results }: ResultsProps) => {
+
     return (
         <div className="w-full grid grid-cols-3 gap-x-4 gap-y-8">
             {results.map((result, index) => (
                 <div key={index} className="relative w-full flex flex-col">
                     {result.hasRepresentation.length > 0 && (
-                        <a href={`https://collections.tepapa.govt.nz/object/${result.id}`}>
+                        <a target="_blank" href={result.hasRepresentation[0].contentUrl}>
                             <div className="relative w-full h-[300px]">
                                 <Image
                                     src={result.hasRepresentation[0].previewUrl}
-                                    alt={result.hasRepresentation[0].title.split(';').slice(1).join('\n')}
+                                    alt={result.title}
                                     fill
-                                    className="object-contain object-left"
+                                    className="object-contain object-center bg-slate-100"
                                 />
                             </div>
                             <p className="mt-2 text-left text-gray-700">
-                                {result.hasRepresentation[0].title.split(';').slice(1).map((line, idx) => (
-                                    <span key={idx}>{line}<br /></span>
-                                ))}
+                                {result.title}
                             </p>
                         </a>
                     )}
